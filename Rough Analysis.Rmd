@@ -1,0 +1,57 @@
+---
+title: "Pet Inflation Analysis"
+author: "Nishadari Rajapaksha"
+date: "2025-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(forecast)
+```
+
+Strucutre of the "Tidy" dataset
+
+```{r}
+str(Tidy)
+```
+
+Filtering data outside 1st of Jan, 2016 and 31st of Dec, 2024
+
+```{r}
+filtered_data <- Tidy %>%
+  filter(Date >= ymd("2016-01-01") & Date <= ymd("2024-12-31"))
+```
+
+Verifying hte range
+
+```{r}
+range(filtered_data$Date)
+```
+
+Check for NULL values in teh filtered dataset
+
+```{r}
+sum(is.na(filtered_data))
+```
+
+Creating a ts object
+
+```{r}
+ts_data <- ts(filtered_data$Value,
+              start = c(2016, 1),
+              end = c(2024, 12),
+              frequency = 12)
+
+decomp <- stl(ts_data, s.window = "periodic")
+
+plot(decomp)
+```
+
+
