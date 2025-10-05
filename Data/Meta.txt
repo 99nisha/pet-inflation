@@ -1,2 +1,6 @@
 CPI ANNUAL RATE 09.3.5.0 Veterinary and other services for pets 2015=100:
 https://www.ons.gov.uk/economy/inflationandpriceindices/timeseries/l7sn/mm23
+
+
+Temperature:
+https://www.statista.com/statistics/322658/monthly-average-daily-temperatures-in-the-united-kingdom-uk/
