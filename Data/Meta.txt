@@ -1,6 +1,8 @@
 CPI ANNUAL RATE 09.3.5.0 Veterinary and other services for pets 2015=100:
 https://www.ons.gov.uk/economy/inflationandpriceindices/timeseries/l7sn/mm23
 
+Met Office (UK Climate Averages & Observations): Temp, Rainfall and Frost
+https://www.metoffice.gov.uk/research/climate/maps-and-data/uk-and-regional-series?utm_source=chatgpt.com
 
-Temperature:
-https://www.statista.com/statistics/322658/monthly-average-daily-temperatures-in-the-united-kingdom-uk/
+GDP monthly estimate, UK
+https://www.ons.gov.uk/economy/grossdomesticproductgdp/bulletins/gdpmonthlyestimateuk/july2025?utm_source=chatgpt.com
