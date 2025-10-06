@@ -112,7 +112,7 @@ autoplot(forecast_arima_2016_2024) +
 # Forecast using SARIMA
 
 fit_sarima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
-forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=24)
+forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=12)
 
 autoplot(forecast_sarima_2016_2024) +
   ggtitle("SARIMA Forecast of CPI for Veterinary Services (2025-2026)") +
@@ -137,7 +137,7 @@ names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Value"] <- "y"
 m <- prophet(df_prophet_2016_2024)
 
 # Extend 24 months into the future (2025-2026)
-future_2016_2024 <- make_future_dataframe(m, periods = 24, freq = 'month')
+future_2016_2024 <- make_future_dataframe(m, periods = 12, freq = 'month')
 
 # Forecast
 forecast_prophet_2016_2024 <- predict(m, future_2016_2024)
