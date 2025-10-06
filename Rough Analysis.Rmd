@@ -12,8 +12,11 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(dplyr)
 library(lubridate)
-library(ggplot2)
 library(forecast)
+library(ggplot2)
+library(tidyr)
+library(scales)
+library(zoo)
 ```
 
 Strucutre of the "Tidy" dataset
@@ -54,4 +57,42 @@ decomp <- stl(ts_data, s.window = "periodic")
 plot(decomp)
 ```
 
+```{r}
+
+# --- Create proper date sequence from ts time index ---
+time_index <- time(ts_data)
+date_seq <- as.Date(as.yearmon(time_index))
+
+# --- Combine and reshape ---
+decomp_df <- cbind(
+  Date = date_seq,
+  as.data.frame(decomp$time.series)
+) %>%
+  pivot_longer(-Date, names_to = "Component", values_to = "Value")
+
+# --- Beautified plot (now perfectly aligned) ---
+ggplot(decomp_df, aes(x = Date, y = Value)) +
+  geom_line(color = "#0072B2", size = 0.9) +
+  facet_wrap(~ Component, ncol = 1, scales = "free_y") +
+  scale_x_date(date_labels = "%Y", breaks = "1 year") +
+  labs(
+    title = "STL Decomposition of CPI (Veterinary & Pet Services)",
+    subtitle = "2016–2024",
+    x = "", y = ""
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    strip.text = element_text(face = "bold", size = 11, color = "#333333"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray85"),
+    panel.grid.major.y = element_line(color = "gray90"),
+    axis.text = element_text(color = "gray20"),
+    plot.background = element_rect(fill = "#F9F9F7", color = NA),
+    panel.grid = element_line(color = "gray85"),
+    axis.ticks = element_line(color = "gray60")
+  )
+
+```
 
