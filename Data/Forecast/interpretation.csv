@@ -1,0 +1,6 @@
+"Observation","Comment"
+"AIC Comparison","AIC: SARIMA < SARIMAX < ARIMAX < ARIMA: SARIMA has best fit, ARIMAX better than ARIMA"
+"BIC Comparison","BIC: SARIMA < SARIMAX < ARIMA < ARIMAX: adding regressors increases complexity penalty"
+"Significant Regressors (ARIMAX)","Only Rainfall is statistically significant (p < 0.05) with negative effect in ARIMAX"
+"Significant Regressors (SARIMAX)","No regressor is statistically significant (p > 0.05) in SARIMAX"
+"Multicollinearity / VIF","VIF values are moderate: Air_Frost and Mean_Temp show some correlation; GDP and Rainfall low correlation (<2), multicollinearity not critical"

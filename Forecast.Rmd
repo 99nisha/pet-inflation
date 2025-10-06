@@ -69,7 +69,8 @@ forecast_to_df <- function(forecast_obj, start_date) {
   return(df)
 }
 
-# ETS, ARIMA, SARIMA forecasts
+# ETS, ARIMA, SARIMA
+
 fit_ets_2016_2024 <- ets(ts_data_2016_2024)
 forecast_ets_2016_2024 <- forecast(fit_ets_2016_2024, h=12)  # Forecast 12 months (2025)
 
@@ -79,7 +80,8 @@ forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=12)
 fit_sarima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
 forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=12)
 
-# Prophet forecast
+# Prophet
+
 df_prophet_2016_2024 <- cpi_data_2016_2024
 names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Date"] <- "ds"
 names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Value"] <- "y"
@@ -88,11 +90,36 @@ m <- prophet(df_prophet_2016_2024)
 future_2016_2024 <- make_future_dataframe(m, periods = 12, freq = 'month')
 forecast_prophet_2016_2024 <- predict(m, future_2016_2024)
 
-# Keep only 2025
 forecast_prophet_2025 <- forecast_prophet_2016_2024 %>%
   dplyr::filter(ds >= as.Date("2025-01-01") & ds <= as.Date("2025-12-01"))
 
-# Convert Prophet forecast to same format
+
+# ARIMAX, SARIMAX ALL REGRESSORS
+
+wide_data_2016_2024 <- filtered_data_2016_2024 %>%
+  pivot_wider(names_from = DataSource, values_from = Value) %>%
+  arrange(Date)
+
+ts_cpi_2016_2024 <- ts(wide_data_2016_2024$CPI_Pet, start = c(2016, 1), frequency = 12)
+
+xreg_train_2016_2024 <- as.matrix(wide_data_2016_2024 %>%
+  select(Air_Frost, GDP, Mean_Temp, Rainfall))
+
+future_xreg_2016_2024 <- matrix(rep(tail(xreg_train_2016_2024, 1), 12), ncol = 4, byrow = TRUE)
+colnames(future_xreg_2016_2024) <- c("Air_Frost", "GDP", "Mean_Temp", "Rainfall")
+
+fit_arimax_2016_2024 <- auto.arima(ts_cpi_2016_2024, xreg = xreg_train_2016_2024, seasonal = FALSE)
+forecast_arimax_2016_2024 <- forecast(fit_arimax_2016_2024, xreg = future_xreg_2016_2024, h = 12)
+
+fit_sarimax_2016_2024 <- auto.arima(ts_cpi_2016_2024, xreg = xreg_train_2016_2024, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+forecast_sarimax_2016_2024 <- forecast(
+  fit_sarimax_2016_2024,
+  xreg = future_xreg_2016_2024,
+  h = 12
+)
+
+### export start ###
+
 prophet_df <- data.frame(
   Date = forecast_prophet_2025$ds,
   PointForecast = forecast_prophet_2025$yhat,
@@ -102,7 +129,25 @@ prophet_df <- data.frame(
   Hi95 = forecast_prophet_2025$yhat_upper
 )
 
-### export start ###
+arimax_df <- data.frame(
+  Date = seq.Date(from = as.Date("2025-01-01"), by = "month", length.out = 12),
+  PointForecast = as.numeric(forecast_arimax_2016_2024$mean),
+  Lo80 = as.numeric(forecast_arimax_2016_2024$lower[,1]),
+  Hi80 = as.numeric(forecast_arimax_2016_2024$upper[,1]),
+  Lo95 = as.numeric(forecast_arimax_2016_2024$lower[,2]),
+  Hi95 = as.numeric(forecast_arimax_2016_2024$upper[,2])
+)
+
+sarimax_df <- data.frame(
+  Date = seq.Date(from = as.Date("2025-01-01"), by = "month", length.out = 12),
+  PointForecast = as.numeric(forecast_sarimax_2016_2024$mean),
+  Lo80 = as.numeric(forecast_sarimax_2016_2024$lower[,1]),
+  Hi80 = as.numeric(forecast_sarimax_2016_2024$upper[,1]),
+  Lo95 = as.numeric(forecast_sarimax_2016_2024$lower[,2]),
+  Hi95 = as.numeric(forecast_sarimax_2016_2024$upper[,2]),
+  model = "SARIMAX"
+)
+
 ets_df <- forecast_to_df(forecast_ets_2016_2024, start_date = as.Date("2025-01-01"))
 arima_df <- forecast_to_df(forecast_arima_2016_2024, start_date = as.Date("2025-01-01"))
 sarima_df <- forecast_to_df(forecast_sarima_2016_2024, start_date = as.Date("2025-01-01"))
@@ -112,9 +157,11 @@ ets_df$model <- "ETS"
 arima_df$model <- "ARIMA"
 sarima_df$model <- "SARIMA"
 prophet_df$model <- "PROPHET"
+arimax_df$model <- "ARIMAX ALL"
+sarimax_df$model <- "SARIMAX ALL"
 
 # Combine all forecasts
-forecast_2016_2024_df <- bind_rows(ets_df, arima_df, sarima_df, prophet_df)
+forecast_2016_2024_df <- bind_rows(ets_df, arima_df, sarima_df, prophet_df, arimax_df, sarimax_df)
 
 # Export to CSV
 write.csv(forecast_2016_2024_df, "./Data/Forecast/forecast_2016_2024.csv", row.names = FALSE)
@@ -145,16 +192,27 @@ accuracy_sarima_2016_2024 <- forecast::accuracy(y_fitted_sarima_2016_2024, y_act
 y_fitted_prophet_2016_2024 <- predict(m, df_prophet_2016_2024)$yhat
 accuracy_prophet_2016_2024 <- forecast::accuracy(y_fitted_prophet_2016_2024, y_actual_2016_2024)
 
+# --- ARIMAX Accuracy ---
+y_fitted_arimax_2016_2024 <- as.numeric(fitted(fit_arimax_2016_2024))
+accuracy_arimax_2016_2024 <- forecast::accuracy(y_fitted_arimax_2016_2024, y_actual_2016_2024)
+
+# --- SARIMAX Accuracy ---
+y_fitted_sarimax_2016_2024 <- as.numeric(fitted(fit_sarimax_2016_2024))
+accuracy_sarimax_2016_2024 <- forecast::accuracy(y_fitted_sarimax_2016_2024, y_actual_2016_2024)
+
+
 # Combine results into a single table
 accuracy_table_2016_2024 <- rbind(
   ETS = accuracy_ets_2016_2024,
   ARIMA = accuracy_arima_2016_2024,
   SARIMA = accuracy_sarima_2016_2024,
-  PROPHET = accuracy_prophet_2016_2024
+  PROPHET = accuracy_prophet_2016_2024,
+  ARIMAX = accuracy_arimax_2016_2024,
+  SARIMAX = accuracy_sarimax_2016_2024
 )
 
 accuracy_table_2016_2024 <- as.data.frame(accuracy_table_2016_2024)
-rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA", "PROPHET")
+rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA", "PROPHET", "ARIMAX ALL", "SARIMAX ALL")
 accuracy_table_2016_2024
 
 ### export start ###
@@ -166,6 +224,184 @@ accuracy_table_2016_2024 <- accuracy_table_2016_2024 %>%
 # Export to CSV
 write.csv(accuracy_table_2016_2024, "./Data/Forecast/forecast_accuracy_2016_2024.csv", row.names = FALSE)
 ### export end ###
+
+```
+
+
+```{r}
+# --- AIC/BIC Comparison including SARIMAX ---
+aic_bic_df <- data.frame(
+  Model = c("ARIMA", "ARIMAX", "SARIMA", "SARIMAX"),
+  AIC = c(
+    AIC(fit_arima_2016_2024),
+    AIC(fit_arimax_2016_2024),
+    AIC(fit_sarima_2016_2024),
+    AIC(fit_sarimax_2016_2024)
+  ),
+  BIC = c(
+    BIC(fit_arima_2016_2024),
+    BIC(fit_arimax_2016_2024),
+    BIC(fit_sarima_2016_2024),
+    BIC(fit_sarimax_2016_2024)
+  )
+)
+
+# Export AIC/BIC
+write.csv(aic_bic_df, "./Data/Forecast/AIC_BIC_comparison.csv", row.names = FALSE)
+
+
+
+# AIC lower → ARIMAX fits better / predicts slightly better.
+# BIC higher → the added regressors may not justify their complexity (extra parameters).
+
+
+
+```
+
+
+
+```{r}
+
+# --- ARIMAX Coefficients, SE, t-values, p-values ---
+coefs_arimax <- coef(fit_arimax_2016_2024)
+ses_arimax <- sqrt(diag(vcov(fit_arimax_2016_2024)))
+t_vals_arimax <- coefs_arimax / ses_arimax
+p_vals_arimax <- 2 * (1 - pnorm(abs(t_vals_arimax)))
+
+arimax_coef_df <- data.frame(
+  Model = "ARIMAX",
+  Variable = names(coefs_arimax),
+  Estimate = coefs_arimax,
+  StdError = ses_arimax,
+  t_value = t_vals_arimax,
+  p_value = p_vals_arimax
+)
+
+
+# --- SARIMAX Coefficients, SE, t-values, p-values ---
+coefs_sarimax <- coef(fit_sarimax_2016_2024)
+ses_sarimax <- sqrt(diag(vcov(fit_sarimax_2016_2024)))
+t_vals_sarimax <- coefs_sarimax / ses_sarimax
+p_vals_sarimax <- 2 * (1 - pnorm(abs(t_vals_sarimax)))
+
+sarimax_coef_df <- data.frame(
+  Model = "SARIMAX",
+  Variable = names(coefs_sarimax),
+  Estimate = coefs_sarimax,
+  StdError = ses_sarimax,
+  t_value = t_vals_sarimax,
+  p_value = p_vals_sarimax
+)
+
+
+# --- Combine both models ---
+coef_combined_df <- bind_rows(arimax_coef_df, sarimax_coef_df)
+
+# Export to single CSV
+write.csv(coef_combined_df, "./Data/Forecast/ARIMAX_SARIMAX_coefficients.csv", row.names = FALSE)
+
+
+```
+
+
+
+```{r}
+
+# --- VIF for external regressors ---
+
+# VIF stands for Variance Inflation Factor. A statistical measure used to detect multicollinearity among predictors (independent variables) in a regression model.
+
+# Ensure the regressors exist in wide_data_2016_2024
+lm_model <- lm(CPI_Pet ~ Air_Frost + GDP + Mean_Temp + Rainfall, data = wide_data_2016_2024)
+vif_values <- car::vif(lm_model)
+vif_df <- data.frame(
+  Regressor = names(vif_values),
+  VIF = as.numeric(vif_values)
+)
+
+# Export VIF
+write.csv(vif_df, "./Data/Forecast/VIF.csv", row.names = FALSE)
+
+```
+
+
+
+```{r}
+
+# --- Interpretation Summary (extended) ---
+interpretation <- data.frame(
+  Observation = c(
+    "AIC Comparison",
+    "BIC Comparison",
+    "Significant Regressors (ARIMAX)",
+    "Significant Regressors (SARIMAX)",
+    "Multicollinearity / VIF"
+  ),
+  Comment = c(
+    "AIC: SARIMA < SARIMAX < ARIMAX < ARIMA: SARIMA has best fit, ARIMAX better than ARIMA",
+    "BIC: SARIMA < SARIMAX < ARIMA < ARIMAX: adding regressors increases complexity penalty",
+    "Only Rainfall is statistically significant (p < 0.05) with negative effect in ARIMAX",
+    "No regressor is statistically significant (p > 0.05) in SARIMAX",
+    "VIF values are moderate: Air_Frost and Mean_Temp show some correlation; GDP and Rainfall low correlation (<2), multicollinearity not critical"
+  )
+)
+
+# Export interpretation table
+write.csv(interpretation, "./Data/Forecast/interpretation.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+```{r}
+
+# --- Compare ARIMA, ARIMAX, SARIMA, SARIMAX Performance ---
+
+
+AIC(fit_arima_2016_2024)
+AIC(fit_arimax_2016_2024)
+
+BIC(fit_arima_2016_2024)
+BIC(fit_arimax_2016_2024)
+
+
+# AIC (ARIMAX) < AIC (ARIMA)
+#BIC (ARIMAX) > BIC (ARIMA)
+
+#→ Interpretation:
+
+#AIC lower → ARIMAX fits better / predicts slightly better.
+
+#BIC higher → the added regressors may not justify their complexity (extra parameters).
+
+#In short:
+
+#Your external regressors help explain CPI variation,
+#but not strongly enough to justify their inclusion when penalizing complexity.
+
+summary(fit_arimax_2016_2024)
+
+
+# Extract coefficients and standard errors
+coefs <- coef(fit_arimax_2016_2024)
+ses <- sqrt(diag(vcov(fit_arimax_2016_2024)))
+
+# Compute t-values and p-values
+t_vals <- coefs / ses
+p_vals <- 2 * (1 - pnorm(abs(t_vals)))
+
+# Combine into a table
+data.frame(Estimate = coefs, StdError = ses, t_value = t_vals, p_value = p_vals)
+
+# statistically significant (p < 0.05)
+
+# Among the external regressors, only Rainfall shows a statistically significant (negative) impact on CPI forecasting performance in your ARIMAX model.
+
+car::vif(lm_model <- lm(CPI_Pet ~ Air_Frost + GDP + Mean_Temp + Rainfall, data = wide_data_2016_2024))
+
+# Significants regressor
 
 ```
 
