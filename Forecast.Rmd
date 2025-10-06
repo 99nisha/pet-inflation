@@ -1,0 +1,51 @@
+---
+title: "Forecast"
+author: "Nishadari Rajapaksha"
+date: "2025-10-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(forecast)
+library(ggplot2)
+library(tidyr)
+library(scales)
+library(zoo)
+library(readxl)
+
+Tidy <- read_excel("./Data/Tidy/Tidy.xlsx", sheet = "Tidy")
+
+filtered_data_2016_2024 <- Tidy %>%
+  filter(Date >= ymd("2016-01-01") & Date <= ymd("2024-12-31"))
+
+cpi_data_2016_2024 <- filtered_data_2016_2024 %>%
+  filter(DataSource == "CPI_Pet")
+
+ts_data_2016_2024 <- ts(cpi_data_2016_2024$Value,
+              start = c(2016, 1),
+              end = c(2024, 12),
+              frequency = 12)
+
+decomp_2016_2024 <- stl(ts_data_2016_2024, s.window = "periodic")
+
+### export start ###
+
+export_decomp_df <- as.data.frame(decomp_2016_2024$time.series)
+
+export_decomp_df$Date <- seq.Date(from = as.Date("2016-01-01"), 
+                            by = "month", 
+                            length.out = nrow(export_decomp_df))
+
+export_decomp_df <- export_decomp_df %>% select(Date, seasonal, trend, remainder)
+
+write.csv(export_decomp_df, "./Data/Forecast/decomp_2016_2024.csv", row.names = FALSE)
+
+### export end ###
+```
+

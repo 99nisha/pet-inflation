@@ -197,7 +197,7 @@ accuracy_table_2016_2024 <- rbind(
 
 accuracy_table_2016_2024 <- as.data.frame(accuracy_table_2016_2024)
 rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA", "Prophet")
-accuracy_table
+accuracy_table_2016_2024
 
 
 # Create a data frame of metrics and their meaning
@@ -442,7 +442,7 @@ accuracy_table_2018_2024 <- rbind(
 
 accuracy_table_2018_2024 <- as.data.frame(accuracy_table_2018_2024)
 rownames(accuracy_table_2018_2024) <- c("ETS", "ARIMA", "SARIMA", "Prophet")
-accuracy_table
+accuracy_table_2018_2024
 
 
 # Create a data frame of metrics and their meaning
