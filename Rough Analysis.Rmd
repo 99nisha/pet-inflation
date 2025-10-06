@@ -17,61 +17,54 @@ library(ggplot2)
 library(tidyr)
 library(scales)
 library(zoo)
+library(readxl)
 ```
 
-Strucutre of the "Tidy" dataset
+Structure of the "Tidy" data set
 
 ```{r}
+Tidy <- read_excel("./Data/Tidy/Tidy.xlsx", sheet = "Tidy")
+
+head(Tidy)
+
 str(Tidy)
+sum(is.na(Tidy))
 ```
-
-Filtering data outside 1st of Jan, 2016 and 31st of Dec, 2024
+## Forecast Analysis on 2025 from (2016-2024) historic data
 
 ```{r}
-filtered_data <- Tidy %>%
+filtered_data_2016_2024 <- Tidy %>%
   filter(Date >= ymd("2016-01-01") & Date <= ymd("2024-12-31"))
-```
 
-Verifying hte range
+sum(is.na(filtered_data_2016_2024))
+range(filtered_data_2016_2024$Date)
 
-```{r}
-range(filtered_data$Date)
-```
+cpi_data_2016_2024 <- filtered_data_2016_2024 %>%
+  filter(DataSource == "CPI_Pet")
 
-Check for NULL values in teh filtered dataset
-
-```{r}
-sum(is.na(filtered_data))
-```
-
-Creating a ts object
-
-```{r}
-ts_data <- ts(filtered_data$Value,
+# Creating a ts object
+ts_data_2016_2024 <- ts(cpi_data_2016_2024$Value,
               start = c(2016, 1),
               end = c(2024, 12),
               frequency = 12)
 
-decomp <- stl(ts_data, s.window = "periodic")
+# Decompose to Seasonal, Trend and Remainder
+decomp_2016_2024 <- stl(ts_data_2016_2024, s.window = "periodic")
 
-plot(decomp)
-```
+### Decomposition Plots Start
 
-```{r}
+plot(decomp_2016_2024) # default
 
-# --- Create proper date sequence from ts time index ---
-time_index <- time(ts_data)
-date_seq <- as.Date(as.yearmon(time_index))
+time_index_2016_2024 <- time(ts_data_2016_2024)
+date_seq_2016_2024 <- as.Date(as.yearmon(time_index_2016_2024))
 
-# --- Combine and reshape ---
-decomp_df <- cbind(
-  Date = date_seq,
-  as.data.frame(decomp$time.series)
+decomp_df_2016_2024 <- cbind(
+  Date = date_seq_2016_2024,
+  as.data.frame(decomp_2016_2024$time.series)
 ) %>%
   pivot_longer(-Date, names_to = "Component", values_to = "Value")
 
-# --- Beautified plot (now perfectly aligned) ---
-ggplot(decomp_df, aes(x = Date, y = Value)) +
+ggplot(decomp_df_2016_2024, aes(x = Date, y = Value)) +
   geom_line(color = "#0072B2", size = 0.9) +
   facet_wrap(~ Component, ncol = 1, scales = "free_y") +
   scale_x_date(date_labels = "%Y", breaks = "1 year") +
@@ -94,5 +87,452 @@ ggplot(decomp_df, aes(x = Date, y = Value)) +
     axis.ticks = element_line(color = "gray60")
   )
 
+### Decomposition Plots End
+
+# Forecast using ETS (Exponential Smoothing)
+
+fit_ets_2016_2024 <- ets(ts_data_2016_2024)
+forecast_ets_2016_2024 <- forecast(fit_ets_2016_2024, h=12)  # Forecast 12 months (2025–2026)
+
+autoplot(forecast_ets_2016_2024) +
+  ggtitle("ETS Forecast of CPI for Veterinary Services") +
+  ylab("CPI Index")
+
+
+# Forecast using ARIMA
+
+fit_arima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=FALSE)
+forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=12)
+
+autoplot(forecast_arima_2016_2024) +
+  ggtitle("ARIMA Forecast of CPI for Veterinary Services") +
+  ylab("CPI Index")
+
+
+# Forecast using SARIMA
+
+fit_sarima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
+forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=24)
+
+autoplot(forecast_sarima_2016_2024) +
+  ggtitle("SARIMA Forecast of CPI for Veterinary Services (2025-2026)") +
+  ylab("CPI Index") +
+  xlab("Year") +
+  theme_minimal()
+
+summary(fit_sarima_2016_2024)
+
+
+# Forecast using Prophet
+
+library(prophet)
+library(ggplot2)
+
+# Prepare data
+df_prophet_2016_2024 <- cpi_data_2016_2024
+names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Date"] <- "ds"
+names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Value"] <- "y"
+
+# Fit Prophet model
+m <- prophet(df_prophet_2016_2024)
+
+# Extend 24 months into the future (2025-2026)
+future_2016_2024 <- make_future_dataframe(m, periods = 24, freq = 'month')
+
+# Forecast
+forecast_prophet_2016_2024 <- predict(m, future_2016_2024)
+
+# Combine historical and forecast
+forecast_df_2016_2024 <- data.frame(
+  ds = forecast_prophet_2016_2024$ds,
+  yhat = forecast_prophet_2016_2024$yhat,
+  yhat_lower = forecast_prophet_2016_2024$yhat_lower,
+  yhat_upper = forecast_prophet_2016_2024$yhat_upper
+)
+
+# Plot
+ggplot() +
+  geom_line(data = df_prophet_2016_2024, aes(x = ds, y = y), color = "black") +  # historical
+  geom_line(data = forecast_df_2016_2024, aes(x = ds, y = yhat), color = "blue") +  # forecast
+  geom_ribbon(data = forecast_df_2016_2024, aes(x = ds, ymin = yhat_lower, ymax = yhat_upper),
+              fill = "blue", alpha = 0.2) +  # confidence interval
+  labs(title = "Prophet Forecast of CPI for Veterinary Services (2025-2026)",
+       x = "Date", y = "CPI Index") +
+  theme_minimal()
+
+
 ```
+
+
+### Comparing Accuracies
+
+```{r}
+# Convert ts objects to numeric
+y_actual_2016_2024 <- as.numeric(ts_data_2016_2024)
+
+# --- ETS Accuracy ---
+y_fitted_ets_2016_2024 <- as.numeric(fitted(fit_ets_2016_2024))
+accuracy_ets_2016_2024 <- forecast::accuracy(y_fitted_ets_2016_2024, y_actual_2016_2024)
+
+# --- ARIMA Accuracy ---
+y_fitted_arima_2016_2024 <- as.numeric(fitted(fit_arima_2016_2024))
+accuracy_arima_2016_2024 <- forecast::accuracy(y_fitted_arima_2016_2024, y_actual_2016_2024)
+
+# --- SARIMA Accuracy ---
+y_fitted_sarima_2016_2024 <- as.numeric(fitted(fit_sarima_2016_2024))
+accuracy_sarima_2016_2024 <- forecast::accuracy(y_fitted_sarima_2016_2024, y_actual_2016_2024)
+
+# --- Prophet Accuracy ---
+# Prophet stores fitted values in the training period
+prophet_fitted_2016_2024 <- forecast_prophet_2016_2024$yhat[1:length(y_actual_2016_2024)]
+accuracy_prophet_2016_2024 <- forecast::accuracy(as.numeric(prophet_fitted_2016_2024), y_actual_2016_2024)
+
+# Combine results into a single table
+accuracy_table_2016_2024 <- rbind(
+  ETS = accuracy_ets_2016_2024,
+  ARIMA = accuracy_arima_2016_2024,
+  SARIMA = accuracy_sarima_2016_2024,
+  Prophet = accuracy_prophet_2016_2024
+)
+
+accuracy_table_2016_2024 <- as.data.frame(accuracy_table_2016_2024)
+rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA", "Prophet")
+accuracy_table
+
+
+# Create a data frame of metrics and their meaning
+accuracy_metrics <- data.frame(
+  Metric = c("ME", "RMSE", "MAE", "MPE", "MAPE"),
+  Meaning = c(
+    "Mean Error — average of (actual − predicted); shows bias: positive → underprediction, negative → overprediction",
+    "Root Mean Squared Error — sqrt(mean((actual − predicted)^2)); penalizes large errors more heavily",
+    "Mean Absolute Error — mean(abs(actual − predicted)); simple average of absolute errors",
+    "Mean Percentage Error — mean((actual − predicted)/actual * 100); shows bias as a percentage",
+    "Mean Absolute Percentage Error — mean(abs((actual − predicted)/actual) * 100); absolute error as a percentage"
+  )
+)
+
+accuracy_metrics
+
+```
+
+# Identifying the Best Duration of Historical Data
+
+**Chow Test**
+
+- If the p-value < 0.05 → statistically significant break at the chosen date.
+- If p-value ≥ 0.05 → no significant break.
+
+```{r}
+
+library(strucchange)
+
+# Convert Date to numeric time for regression
+cpi_data_2016_2024$Time <- as.numeric(cpi_data_2016_2024$Date)
+
+# Fit linear model on full period
+full_model <- lm(Value ~ Time, data = cpi_data_2016_2024)
+
+# Define breakpoint date (e.g., start of 2020)
+breakpoint_date <- as.Date("2020-01-01")
+breakpoint_index <- which(cpi_data_2016_2024$Date == breakpoint_date)
+
+# Perform Chow test using sctest() from strucchange
+chow_result <- sctest(full_model, type = "Chow", point = breakpoint_index)
+
+# View result
+print(chow_result)
+
+```
+
+**Rolling Window Analysis**
+
+- Sharp changes in rolling mean or variance indicate shifts in trend or volatility.
+- Helps you decide which historical period is most relevant for forecasting.
+
+```{r}
+
+library(zoo)
+
+# Define rolling window size (24 months for 2 years)
+window_size <- 24
+
+# Rolling mean
+cpi_data_2016_2024$roll_mean <- rollapply(cpi_data_2016_2024$Value, width = window_size, FUN = mean, align = "right", fill = NA)
+
+# Rolling variance
+cpi_data_2016_2024$roll_var <- rollapply(cpi_data_2016_2024$Value, width = window_size, FUN = var, align = "right", fill = NA)
+
+# Plot rolling statistics
+library(ggplot2)
+
+ggplot(cpi_data_2016_2024, aes(x = Date)) +
+  geom_line(aes(y = Value), color = "black", alpha = 0.5) +
+  geom_line(aes(y = roll_mean), color = "blue", size = 1) +
+  geom_line(aes(y = roll_var), color = "red", size = 1) +
+  labs(title = "CPI Rolling Mean (blue) and Variance (red)", y = "CPI Value")
+
+```
+
+
+## Forecast Analysis on 2025 from (2018-2024) historic data
+
+```{r}
+
+filtered_data_2018_2024 <- Tidy %>%
+  filter(Date >= ymd("2018-01-01") & Date <= ymd("2024-12-31"))
+
+sum(is.na(filtered_data_2018_2024))
+range(filtered_data_2018_2024$Date)
+
+cpi_data_2018_2024 <- filtered_data_2018_2024 %>%
+  filter(DataSource == "CPI_Pet")
+
+# Creating a ts object
+ts_data_2018_2024 <- ts(cpi_data_2018_2024$Value,
+              start = c(2018, 1),
+              end = c(2024, 12),
+              frequency = 12)
+
+# Decompose to Seasonal, Trend and Remainder
+decomp_2018_2024 <- stl(ts_data_2018_2024, s.window = "periodic")
+
+### Decomposition Plots Start
+
+plot(decomp_2018_2024) # default
+
+time_index_2018_2024 <- time(ts_data_2018_2024)
+date_seq_2018_2024 <- as.Date(as.yearmon(time_index_2018_2024))
+
+decomp_df_2018_2024 <- cbind(
+  Date = date_seq_2018_2024,
+  as.data.frame(decomp_2018_2024$time.series)
+) %>%
+  pivot_longer(-Date, names_to = "Component", values_to = "Value")
+
+ggplot(decomp_df_2018_2024, aes(x = Date, y = Value)) +
+  geom_line(color = "#0072B2", size = 0.9) +
+  facet_wrap(~ Component, ncol = 1, scales = "free_y") +
+  scale_x_date(date_labels = "%Y", breaks = "1 year") +
+  labs(
+    title = "STL Decomposition of CPI (Veterinary & Pet Services)",
+    subtitle = "2018–2024",
+    x = "", y = ""
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    strip.text = element_text(face = "bold", size = 11, color = "#333333"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray85"),
+    panel.grid.major.y = element_line(color = "gray90"),
+    axis.text = element_text(color = "gray20"),
+    plot.background = element_rect(fill = "#F9F9F7", color = NA),
+    panel.grid = element_line(color = "gray85"),
+    axis.ticks = element_line(color = "gray60")
+  )
+
+### Decomposition Plots End
+
+# Forecast using ETS (Exponential Smoothing)
+
+fit_ets_2018_2024 <- ets(ts_data_2018_2024)
+forecast_ets_2018_2024 <- forecast(fit_ets_2018_2024, h=12)  # Forecast 12 months (2025–2026)
+
+autoplot(forecast_ets_2018_2024) +
+  ggtitle("ETS Forecast of CPI for Veterinary Services") +
+  ylab("CPI Index")
+
+
+# Forecast using ARIMA
+
+fit_arima_2018_2024 <- auto.arima(ts_data_2018_2024, seasonal=FALSE)
+forecast_arima_2018_2024 <- forecast(fit_arima_2018_2024, h=12)
+
+autoplot(forecast_arima_2018_2024) +
+  ggtitle("ARIMA Forecast of CPI for Veterinary Services") +
+  ylab("CPI Index")
+
+
+# Forecast using SARIMA
+
+fit_sarima_2018_2024 <- auto.arima(ts_data_2018_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
+forecast_sarima_2018_2024 <- forecast(fit_sarima_2018_2024, h=24)
+
+autoplot(forecast_sarima_2018_2024) +
+  ggtitle("SARIMA Forecast of CPI for Veterinary Services (2025-2026)") +
+  ylab("CPI Index") +
+  xlab("Year") +
+  theme_minimal()
+
+summary(fit_sarima_2018_2024)
+
+
+# Forecast using Prophet
+
+library(prophet)
+library(ggplot2)
+
+# Prepare data
+df_prophet_2018_2024 <- cpi_data_2018_2024
+names(df_prophet_2018_2024)[names(df_prophet_2018_2024) == "Date"] <- "ds"
+names(df_prophet_2018_2024)[names(df_prophet_2018_2024) == "Value"] <- "y"
+
+# Fit Prophet model
+m <- prophet(df_prophet_2018_2024)
+
+# Extend 24 months into the future (2025-2026)
+future_2018_2024 <- make_future_dataframe(m, periods = 24, freq = 'month')
+
+# Forecast
+forecast_prophet_2018_2024 <- predict(m, future_2018_2024)
+
+# Combine historical and forecast
+forecast_df_2018_2024 <- data.frame(
+  ds = forecast_prophet_2018_2024$ds,
+  yhat = forecast_prophet_2018_2024$yhat,
+  yhat_lower = forecast_prophet_2018_2024$yhat_lower,
+  yhat_upper = forecast_prophet_2018_2024$yhat_upper
+)
+
+# Plot
+ggplot() +
+  geom_line(data = df_prophet_2018_2024, aes(x = ds, y = y), color = "black") +  # historical
+  geom_line(data = forecast_df_2018_2024, aes(x = ds, y = yhat), color = "blue") +  # forecast
+  geom_ribbon(data = forecast_df_2018_2024, aes(x = ds, ymin = yhat_lower, ymax = yhat_upper),
+              fill = "blue", alpha = 0.2) +  # confidence interval
+  labs(title = "Prophet Forecast of CPI for Veterinary Services (2025-2026)",
+       x = "Date", y = "CPI Index") +
+  theme_minimal()
+
+
+```
+
+### Comparing Accuracies
+
+```{r}
+# Convert ts objects to numeric
+y_actual_2018_2024 <- as.numeric(ts_data_2018_2024)
+
+# --- ETS Accuracy ---
+y_fitted_ets_2018_2024 <- as.numeric(fitted(fit_ets_2018_2024))
+accuracy_ets_2018_2024 <- forecast::accuracy(y_fitted_ets_2018_2024, y_actual_2018_2024)
+
+# --- ARIMA Accuracy ---
+y_fitted_arima_2018_2024 <- as.numeric(fitted(fit_arima_2018_2024))
+accuracy_arima_2018_2024 <- forecast::accuracy(y_fitted_arima_2018_2024, y_actual_2018_2024)
+
+# --- SARIMA Accuracy ---
+y_fitted_sarima_2018_2024 <- as.numeric(fitted(fit_sarima_2018_2024))
+accuracy_sarima_2018_2024 <- forecast::accuracy(y_fitted_sarima_2018_2024, y_actual_2018_2024)
+
+# --- Prophet Accuracy ---
+# Prophet stores fitted values in the training period
+prophet_fitted_2018_2024 <- forecast_prophet_2018_2024$yhat[1:length(y_actual_2018_2024)]
+accuracy_prophet_2018_2024 <- forecast::accuracy(as.numeric(prophet_fitted_2018_2024), y_actual_2018_2024)
+
+# Combine results into a single table
+accuracy_table_2018_2024 <- rbind(
+  ETS = accuracy_ets_2018_2024,
+  ARIMA = accuracy_arima_2018_2024,
+  SARIMA = accuracy_sarima_2018_2024,
+  Prophet = accuracy_prophet_2018_2024
+)
+
+accuracy_table_2018_2024 <- as.data.frame(accuracy_table_2018_2024)
+rownames(accuracy_table_2018_2024) <- c("ETS", "ARIMA", "SARIMA", "Prophet")
+accuracy_table
+
+
+# Create a data frame of metrics and their meaning
+accuracy_metrics <- data.frame(
+  Metric = c("ME", "RMSE", "MAE", "MPE", "MAPE"),
+  Meaning = c(
+    "Mean Error — average of (actual − predicted); shows bias: positive → underprediction, negative → overprediction",
+    "Root Mean Squared Error — sqrt(mean((actual − predicted)^2)); penalizes large errors more heavily",
+    "Mean Absolute Error — mean(abs(actual − predicted)); simple average of absolute errors",
+    "Mean Percentage Error — mean((actual − predicted)/actual * 100); shows bias as a percentage",
+    "Mean Absolute Percentage Error — mean(abs((actual − predicted)/actual) * 100); absolute error as a percentage"
+  )
+)
+
+accuracy_metrics
+
+```
+
+## Comparison of Forecasts
+
+
+```{r}
+# --- Historical data ---
+df_hist <- data.frame(
+  Date = seq(as.Date("2018-01-01"), by = "month", length.out = length(ts_data_2018_2024)),
+  CPI = as.numeric(ts_data_2018_2024)
+)
+
+# --- ETS Forecast ---
+df_ets <- data.frame(
+  Date = seq(as.Date("2025-01-01"), by = "month", length.out = 12),
+  CPI = as.numeric(forecast_ets_2018_2024$mean),
+  Model = "ETS"
+)
+
+# --- ARIMA Forecast ---
+df_arima <- data.frame(
+  Date = seq(as.Date("2025-01-01"), by = "month", length.out = 12),
+  CPI = as.numeric(forecast_arima_2018_2024$mean),
+  Model = "ARIMA"
+)
+
+# --- SARIMA Forecast ---
+df_sarima <- data.frame(
+  Date = seq(as.Date("2025-01-01"), by = "month", length.out = 24),  # SARIMA forecasted 24 months
+  CPI = as.numeric(forecast_sarima_2018_2024$mean),
+  Model = "SARIMA"
+)
+
+# --- Prophet Forecast ---
+df_prophet <- data.frame(
+  Date = forecast_df_2018_2024$ds,
+  CPI = forecast_df_2018_2024$yhat,
+  Model = "Prophet"
+)
+
+# Convert all forecast dates to Date class
+df_ets$Date <- as.Date(df_ets$Date)
+df_arima$Date <- as.Date(df_arima$Date)
+df_sarima$Date <- as.Date(df_sarima$Date)
+df_prophet$Date <- as.Date(df_prophet$Date)
+
+# Combine all forecasts
+df_forecasts <- bind_rows(df_ets, df_arima, df_sarima, df_prophet)
+
+# Plot historical + all forecasts
+ggplot() +
+  geom_line(data = df_hist, aes(x = Date, y = CPI), color = "black", size = 1, linetype = "solid") +
+  geom_line(data = df_forecasts, aes(x = Date, y = CPI, color = Model), size = 1, linetype = "dashed") +
+  geom_point(data = df_forecasts, aes(x = Date, y = CPI, color = Model), size = 1.5) +
+  scale_color_manual(values = c(
+    "ETS" = "#0072B2",
+    "ARIMA" = "#D55E00",
+    "SARIMA" = "#009E73",
+    "Prophet" = "#CC79A7"
+  )) +
+  labs(
+    title = "Comparison of Forecasts for CPI (Veterinary Services)",
+    x = "Date",
+    y = "CPI",
+    color = "Forecast Method"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    axis.text = element_text(color = "gray20"),
+    legend.position = "top"
+  )
+
+```
+
+
 
