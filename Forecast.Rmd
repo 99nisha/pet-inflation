@@ -53,6 +53,9 @@ write.csv(export_decomp_df, "./Data/Forecast/decomp_2016_2024.csv", row.names = 
 ```{r}
 
 library(dplyr)
+library(forecast)
+library(prophet)
+library(ggplot2)
 
 forecast_to_df <- function(forecast_obj, start_date) {
   df <- data.frame(
@@ -66,8 +69,9 @@ forecast_to_df <- function(forecast_obj, start_date) {
   return(df)
 }
 
+# ETS, ARIMA, SARIMA forecasts
 fit_ets_2016_2024 <- ets(ts_data_2016_2024)
-forecast_ets_2016_2024 <- forecast(fit_ets_2016_2024, h=12)  # Forecast 12 months (2025–2026)
+forecast_ets_2016_2024 <- forecast(fit_ets_2016_2024, h=12)  # Forecast 12 months (2025)
 
 fit_arima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=FALSE)
 forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=12)
@@ -75,8 +79,30 @@ forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=12)
 fit_sarima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
 forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=12)
 
-### export start ###
+# Prophet forecast
+df_prophet_2016_2024 <- cpi_data_2016_2024
+names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Date"] <- "ds"
+names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Value"] <- "y"
 
+m <- prophet(df_prophet_2016_2024)
+future_2016_2024 <- make_future_dataframe(m, periods = 12, freq = 'month')
+forecast_prophet_2016_2024 <- predict(m, future_2016_2024)
+
+# Keep only 2025
+forecast_prophet_2025 <- forecast_prophet_2016_2024 %>%
+  dplyr::filter(ds >= as.Date("2025-01-01") & ds <= as.Date("2025-12-01"))
+
+# Convert Prophet forecast to same format
+prophet_df <- data.frame(
+  Date = forecast_prophet_2025$ds,
+  PointForecast = forecast_prophet_2025$yhat,
+  Lo80 = forecast_prophet_2025$yhat_lower,
+  Hi80 = forecast_prophet_2025$yhat_upper,
+  Lo95 = forecast_prophet_2025$yhat_lower,   # Prophet does not output separate 95% by default
+  Hi95 = forecast_prophet_2025$yhat_upper
+)
+
+### export start ###
 ets_df <- forecast_to_df(forecast_ets_2016_2024, start_date = as.Date("2025-01-01"))
 arima_df <- forecast_to_df(forecast_arima_2016_2024, start_date = as.Date("2025-01-01"))
 sarima_df <- forecast_to_df(forecast_sarima_2016_2024, start_date = as.Date("2025-01-01"))
@@ -85,14 +111,16 @@ sarima_df <- forecast_to_df(forecast_sarima_2016_2024, start_date = as.Date("202
 ets_df$model <- "ETS"
 arima_df$model <- "ARIMA"
 sarima_df$model <- "SARIMA"
+prophet_df$model <- "PROPHET"
 
 # Combine all forecasts
-forecast_2016_2024_df <- bind_rows(ets_df, arima_df, sarima_df)
+forecast_2016_2024_df <- bind_rows(ets_df, arima_df, sarima_df, prophet_df)
 
 # Export to CSV
 write.csv(forecast_2016_2024_df, "./Data/Forecast/forecast_2016_2024.csv", row.names = FALSE)
-
 ### export end ###
+
+
 ```
 
 
@@ -112,15 +140,21 @@ accuracy_arima_2016_2024 <- forecast::accuracy(y_fitted_arima_2016_2024, y_actua
 y_fitted_sarima_2016_2024 <- as.numeric(fitted(fit_sarima_2016_2024))
 accuracy_sarima_2016_2024 <- forecast::accuracy(y_fitted_sarima_2016_2024, y_actual_2016_2024)
 
+# --- PROPHET Accuracy ---
+# Prophet fitted values
+y_fitted_prophet_2016_2024 <- predict(m, df_prophet_2016_2024)$yhat
+accuracy_prophet_2016_2024 <- forecast::accuracy(y_fitted_prophet_2016_2024, y_actual_2016_2024)
+
 # Combine results into a single table
 accuracy_table_2016_2024 <- rbind(
   ETS = accuracy_ets_2016_2024,
   ARIMA = accuracy_arima_2016_2024,
-  SARIMA = accuracy_sarima_2016_2024
+  SARIMA = accuracy_sarima_2016_2024,
+  PROPHET = accuracy_prophet_2016_2024
 )
 
 accuracy_table_2016_2024 <- as.data.frame(accuracy_table_2016_2024)
-rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA")
+rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA", "PROPHET")
 accuracy_table_2016_2024
 
 ### export start ###
@@ -131,7 +165,9 @@ accuracy_table_2016_2024 <- accuracy_table_2016_2024 %>%
 
 # Export to CSV
 write.csv(accuracy_table_2016_2024, "./Data/Forecast/forecast_accuracy_2016_2024.csv", row.names = FALSE)
-
 ### export end ###
+
 ```
+
+
 

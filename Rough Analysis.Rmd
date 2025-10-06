@@ -123,6 +123,9 @@ autoplot(forecast_sarima_2016_2024) +
 summary(fit_sarima_2016_2024)
 
 
+```
+
+```{r}
 # Forecast using Prophet
 
 library(prophet)
@@ -142,6 +145,9 @@ future_2016_2024 <- make_future_dataframe(m, periods = 12, freq = 'month')
 # Forecast
 forecast_prophet_2016_2024 <- predict(m, future_2016_2024)
 
+forecast_prophet_2016_2024 <- forecast_prophet_2016_2024 %>%
+  dplyr::filter(ds >= as.Date("2025-01-01") & ds <= as.Date("2025-12-01"))
+
 # Combine historical and forecast
 forecast_df_2016_2024 <- data.frame(
   ds = forecast_prophet_2016_2024$ds,
@@ -159,9 +165,8 @@ ggplot() +
   labs(title = "Prophet Forecast of CPI for Veterinary Services (2025-2026)",
        x = "Date", y = "CPI Index") +
   theme_minimal()
-
-
 ```
+
 
 
 ### Comparing Accuracies
@@ -535,4 +540,114 @@ ggplot() +
 ```
 
 
+## Forecast Analysis with Regressors on 2025 from (2016-2024) historic data
+
+```{r}
+
+wide_data_2016_2024 <- filtered_data_2016_2024 %>%
+  pivot_wider(names_from = DataSource, values_from = Value) %>%
+  arrange(Date)
+
+ts_cpi_2016_2024 <- ts(wide_data_2016_2024$CPI_Pet, start = c(2016, 1), frequency = 12)
+
+xreg_train_2016_2024 <- as.matrix(wide_data_2016_2024 %>%
+  select(Air_Frost, GDP, Mean_Temp, Rainfall))
+
+fit_arimax_2016_2024 <- auto.arima(ts_cpi_2016_2024, xreg = xreg_train_2016_2024, seasonal = FALSE)
+
+summary(fit_arimax_2016_2024)
+
+future_xreg_2016_2024 <- matrix(rep(tail(xreg_train_2016_2024, 1), 12), ncol = 4, byrow = TRUE)
+colnames(future_xreg_2016_2024) <- c("Air_Frost", "GDP", "Mean_Temp", "Rainfall")
+
+forecast_arimax_2016_2024 <- forecast(fit_arimax_2016_2024, xreg = future_xreg_2016_2024, h = 12)
+
+autoplot(forecast_arimax_2016_2024) +
+  ggtitle("ARIMAX Forecast of CPI for Veterinary Services (2025)") +
+  xlab("Year") +
+  ylab("CPI Index") +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+# --- Compare ARIMA vs ARIMAX Performance ---
+
+AIC(fit_arima_2016_2024)
+AIC(fit_arimax_2016_2024)
+
+BIC(fit_arima_2016_2024)
+BIC(fit_arimax_2016_2024)
+
+
+# AIC (ARIMAX) < AIC (ARIMA)
+#BIC (ARIMAX) > BIC (ARIMA)
+
+#→ Interpretation:
+
+#AIC lower → ARIMAX fits better / predicts slightly better.
+
+#BIC higher → the added regressors may not justify their complexity (extra parameters).
+
+#In short:
+
+#Your external regressors help explain CPI variation,
+#but not strongly enough to justify their inclusion when penalizing complexity.
+
+
+```
+```{r}
+summary(fit_arimax_2016_2024)
+
+```
+
+```{r}
+
+# Extract coefficients and standard errors
+coefs <- coef(fit_arimax_2016_2024)
+ses <- sqrt(diag(vcov(fit_arimax_2016_2024)))
+
+# Compute t-values and p-values
+t_vals <- coefs / ses
+p_vals <- 2 * (1 - pnorm(abs(t_vals)))
+
+# Combine into a table
+data.frame(Estimate = coefs, StdError = ses, t_value = t_vals, p_value = p_vals)
+
+# statistically significant (p < 0.05)
+
+# Among the external regressors, only Rainfall shows a statistically significant (negative) impact on CPI forecasting performance in your ARIMAX model.
+
+```
+
+```{r}
+
+car::vif(lm_model <- lm(CPI_Pet ~ Air_Frost + GDP + Mean_Temp + Rainfall, data = wide_data_2016_2024))
+
+
+```
+
+No VIF > 5, so multicollinearity is not severe. ✅
+Air_Frost and Mean_Temp have the highest VIFs (~4.6–4.9), indicating some correlation with other variables, but it’s not alarming.
+GDP and Rainfall are almost independent of the others — coefficients should be stable.
+
+
+```{r}
+
+# Only significant regressor
+xreg_final <- as.matrix(wide_data_2016_2024 %>% select(Rainfall))
+
+fit_arimax_final <- auto.arima(ts_cpi_2016_2024,
+                               xreg = xreg_final,
+                               seasonal = FALSE)
+
+summary(fit_arimax_final)
+
+AIC(fit_arimax_final)
+BIC(fit_arimax_final)
+
+
+```
 
