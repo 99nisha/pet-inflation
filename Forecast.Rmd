@@ -1,0 +1,137 @@
+---
+title: "Forecast"
+author: "Nishadari Rajapaksha"
+date: "2025-10-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(forecast)
+library(ggplot2)
+library(tidyr)
+library(scales)
+library(zoo)
+library(readxl)
+
+Tidy <- read_excel("./Data/Tidy/Tidy.xlsx", sheet = "Tidy")
+
+filtered_data_2016_2024 <- Tidy %>%
+  filter(Date >= ymd("2016-01-01") & Date <= ymd("2024-12-31"))
+
+cpi_data_2016_2024 <- filtered_data_2016_2024 %>%
+  filter(DataSource == "CPI_Pet")
+
+ts_data_2016_2024 <- ts(cpi_data_2016_2024$Value,
+              start = c(2016, 1),
+              end = c(2024, 12),
+              frequency = 12)
+
+decomp_2016_2024 <- stl(ts_data_2016_2024, s.window = "periodic")
+
+### export start ###
+
+export_decomp_df <- as.data.frame(decomp_2016_2024$time.series)
+
+export_decomp_df$Date <- seq.Date(from = as.Date("2016-01-01"), 
+                            by = "month", 
+                            length.out = nrow(export_decomp_df))
+
+export_decomp_df <- export_decomp_df %>% select(Date, seasonal, trend, remainder)
+
+write.csv(export_decomp_df, "./Data/Forecast/decomp_2016_2024.csv", row.names = FALSE)
+
+### export end ###
+```
+
+
+```{r}
+
+library(dplyr)
+
+forecast_to_df <- function(forecast_obj, start_date) {
+  df <- data.frame(
+    Date = seq.Date(from = start_date, by = "month", length.out = length(forecast_obj$mean)),
+    PointForecast = as.numeric(forecast_obj$mean),
+    Lo80 = as.numeric(forecast_obj$lower[,1]),
+    Hi80 = as.numeric(forecast_obj$upper[,1]),
+    Lo95 = as.numeric(forecast_obj$lower[,2]),
+    Hi95 = as.numeric(forecast_obj$upper[,2])
+  )
+  return(df)
+}
+
+fit_ets_2016_2024 <- ets(ts_data_2016_2024)
+forecast_ets_2016_2024 <- forecast(fit_ets_2016_2024, h=12)  # Forecast 12 months (2025–2026)
+
+fit_arima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=FALSE)
+forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=12)
+
+fit_sarima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
+forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=12)
+
+### export start ###
+
+ets_df <- forecast_to_df(forecast_ets_2016_2024, start_date = as.Date("2025-01-01"))
+arima_df <- forecast_to_df(forecast_arima_2016_2024, start_date = as.Date("2025-01-01"))
+sarima_df <- forecast_to_df(forecast_sarima_2016_2024, start_date = as.Date("2025-01-01"))
+
+# Add model names
+ets_df$model <- "ETS"
+arima_df$model <- "ARIMA"
+sarima_df$model <- "SARIMA"
+
+# Combine all forecasts
+forecast_2016_2024_df <- bind_rows(ets_df, arima_df, sarima_df)
+
+# Export to CSV
+write.csv(forecast_2016_2024_df, "./Data/Forecast/forecast_2016_2024.csv", row.names = FALSE)
+
+### export end ###
+```
+
+
+```{r}
+# Convert ts objects to numeric
+y_actual_2016_2024 <- as.numeric(ts_data_2016_2024)
+
+# --- ETS Accuracy ---
+y_fitted_ets_2016_2024 <- as.numeric(fitted(fit_ets_2016_2024))
+accuracy_ets_2016_2024 <- forecast::accuracy(y_fitted_ets_2016_2024, y_actual_2016_2024)
+
+# --- ARIMA Accuracy ---
+y_fitted_arima_2016_2024 <- as.numeric(fitted(fit_arima_2016_2024))
+accuracy_arima_2016_2024 <- forecast::accuracy(y_fitted_arima_2016_2024, y_actual_2016_2024)
+
+# --- SARIMA Accuracy ---
+y_fitted_sarima_2016_2024 <- as.numeric(fitted(fit_sarima_2016_2024))
+accuracy_sarima_2016_2024 <- forecast::accuracy(y_fitted_sarima_2016_2024, y_actual_2016_2024)
+
+# Combine results into a single table
+accuracy_table_2016_2024 <- rbind(
+  ETS = accuracy_ets_2016_2024,
+  ARIMA = accuracy_arima_2016_2024,
+  SARIMA = accuracy_sarima_2016_2024
+)
+
+accuracy_table_2016_2024 <- as.data.frame(accuracy_table_2016_2024)
+rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA")
+accuracy_table_2016_2024
+
+### export start ###
+accuracy_table_2016_2024$model <- rownames(accuracy_table_2016_2024)
+
+accuracy_table_2016_2024 <- accuracy_table_2016_2024 %>%
+  dplyr::select(model, everything())
+
+# Export to CSV
+write.csv(accuracy_table_2016_2024, "./Data/Forecast/forecast_accuracy_2016_2024.csv", row.names = FALSE)
+
+### export end ###
+```
+
