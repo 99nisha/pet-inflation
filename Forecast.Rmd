@@ -75,7 +75,7 @@ forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=12)
 fit_sarima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
 forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=12)
 
-
+### export start ###
 
 ets_df <- forecast_to_df(forecast_ets_2016_2024, start_date = as.Date("2025-01-01"))
 arima_df <- forecast_to_df(forecast_arima_2016_2024, start_date = as.Date("2025-01-01"))
@@ -92,6 +92,46 @@ forecast_2016_2024_df <- bind_rows(ets_df, arima_df, sarima_df)
 # Export to CSV
 write.csv(forecast_2016_2024_df, "./Data/Forecast/forecast_2016_2024.csv", row.names = FALSE)
 
+### export end ###
+```
 
+
+```{r}
+# Convert ts objects to numeric
+y_actual_2016_2024 <- as.numeric(ts_data_2016_2024)
+
+# --- ETS Accuracy ---
+y_fitted_ets_2016_2024 <- as.numeric(fitted(fit_ets_2016_2024))
+accuracy_ets_2016_2024 <- forecast::accuracy(y_fitted_ets_2016_2024, y_actual_2016_2024)
+
+# --- ARIMA Accuracy ---
+y_fitted_arima_2016_2024 <- as.numeric(fitted(fit_arima_2016_2024))
+accuracy_arima_2016_2024 <- forecast::accuracy(y_fitted_arima_2016_2024, y_actual_2016_2024)
+
+# --- SARIMA Accuracy ---
+y_fitted_sarima_2016_2024 <- as.numeric(fitted(fit_sarima_2016_2024))
+accuracy_sarima_2016_2024 <- forecast::accuracy(y_fitted_sarima_2016_2024, y_actual_2016_2024)
+
+# Combine results into a single table
+accuracy_table_2016_2024 <- rbind(
+  ETS = accuracy_ets_2016_2024,
+  ARIMA = accuracy_arima_2016_2024,
+  SARIMA = accuracy_sarima_2016_2024
+)
+
+accuracy_table_2016_2024 <- as.data.frame(accuracy_table_2016_2024)
+rownames(accuracy_table_2016_2024) <- c("ETS", "ARIMA", "SARIMA")
+accuracy_table_2016_2024
+
+### export start ###
+accuracy_table_2016_2024$model <- rownames(accuracy_table_2016_2024)
+
+accuracy_table_2016_2024 <- accuracy_table_2016_2024 %>%
+  dplyr::select(model, everything())
+
+# Export to CSV
+write.csv(accuracy_table_2016_2024, "./Data/Forecast/forecast_accuracy_2016_2024.csv", row.names = FALSE)
+
+### export end ###
 ```
 
