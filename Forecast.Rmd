@@ -72,13 +72,13 @@ forecast_to_df <- function(forecast_obj, start_date) {
 # ETS, ARIMA, SARIMA
 
 fit_ets_2016_2024 <- ets(ts_data_2016_2024)
-forecast_ets_2016_2024 <- forecast(fit_ets_2016_2024, h=12)  # Forecast 12 months (2025)
+forecast_ets_2016_2024 <- forecast(fit_ets_2016_2024, h=24)  # Forecast 24 months (2025 2026)
 
 fit_arima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=FALSE)
-forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=12)
+forecast_arima_2016_2024 <- forecast(fit_arima_2016_2024, h=24)
 
 fit_sarima_2016_2024 <- auto.arima(ts_data_2016_2024, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
-forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=12)
+forecast_sarima_2016_2024 <- forecast(fit_sarima_2016_2024, h=24)
 
 # Prophet
 
@@ -87,36 +87,71 @@ names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Date"] <- "ds"
 names(df_prophet_2016_2024)[names(df_prophet_2016_2024) == "Value"] <- "y"
 
 m <- prophet(df_prophet_2016_2024)
-future_2016_2024 <- make_future_dataframe(m, periods = 12, freq = 'month')
+future_2016_2024 <- make_future_dataframe(m, periods = 26, freq = 'month')
 forecast_prophet_2016_2024 <- predict(m, future_2016_2024)
 
 forecast_prophet_2025 <- forecast_prophet_2016_2024 %>%
-  dplyr::filter(ds >= as.Date("2025-01-01") & ds <= as.Date("2025-12-01"))
+  dplyr::filter(ds >= as.Date("2025-01-01") & ds <= as.Date("2026-12-31"))
 
 
-# ARIMAX, SARIMAX ALL REGRESSORS
+### ARIMAX SARIMAX
 
 wide_data_2016_2024 <- filtered_data_2016_2024 %>%
   pivot_wider(names_from = DataSource, values_from = Value) %>%
   arrange(Date)
 
+# CPI time series
 ts_cpi_2016_2024 <- ts(wide_data_2016_2024$CPI_Pet, start = c(2016, 1), frequency = 12)
 
-xreg_train_2016_2024 <- as.matrix(wide_data_2016_2024 %>%
-  select(Air_Frost, GDP, Mean_Temp, Rainfall))
-
-future_xreg_2016_2024 <- matrix(rep(tail(xreg_train_2016_2024, 1), 12), ncol = 4, byrow = TRUE)
-colnames(future_xreg_2016_2024) <- c("Air_Frost", "GDP", "Mean_Temp", "Rainfall")
-
-fit_arimax_2016_2024 <- auto.arima(ts_cpi_2016_2024, xreg = xreg_train_2016_2024, seasonal = FALSE)
-forecast_arimax_2016_2024 <- forecast(fit_arimax_2016_2024, xreg = future_xreg_2016_2024, h = 12)
-
-fit_sarimax_2016_2024 <- auto.arima(ts_cpi_2016_2024, xreg = xreg_train_2016_2024, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
-forecast_sarimax_2016_2024 <- forecast(
-  fit_sarimax_2016_2024,
-  xreg = future_xreg_2016_2024,
-  h = 12
+# Create regressor matrix
+xreg_train_2016_2024 <- as.matrix(
+  wide_data_2016_2024 %>%
+    select(Air_Frost, GDP, Mean_Temp, Rainfall, Wages, Pet_Population)
 )
+
+# Interpolate missing values in regressors
+xreg_train_filled <- apply(xreg_train_2016_2024, 2, function(col) na.approx(col, rule = 2))
+xreg_train_filled <- as.matrix(xreg_train_filled)
+colnames(xreg_train_filled) <- c("Air_Frost", "GDP", "Mean_Temp", "Rainfall", "Pet_Population", "Wages")
+
+# Standardize regressors
+xreg_mean <- colMeans(xreg_train_filled, na.rm = TRUE)
+xreg_sd <- apply(xreg_train_filled, 2, sd, na.rm = TRUE)
+
+xreg_train_scaled <- scale(xreg_train_filled, center = xreg_mean, scale = xreg_sd)
+
+# Prepare future xreg using last interpolated row
+last_row <- tail(xreg_train_filled, 1)
+future_xreg_2016_2024 <- matrix(
+  rep(as.numeric(last_row), 24),
+  ncol = ncol(xreg_train_filled),
+  byrow = TRUE
+)
+colnames(future_xreg_2016_2024) <- colnames(xreg_train_filled)
+
+
+# Standardize future regressors with same mean & sd
+future_xreg_scaled <- scale(future_xreg_2016_2024, center = xreg_mean, scale = xreg_sd)
+
+# --- Fit ARIMAX ---
+fit_arimax_2016_2024 <- auto.arima(ts_cpi_2016_2024,
+                                   xreg = xreg_train_filled,
+                                   seasonal = FALSE)
+
+forecast_arimax_2016_2024 <- forecast(fit_arimax_2016_2024,
+                                      xreg = future_xreg_2016_2024,
+                                      h = 24)
+
+# --- Fit SARIMAX ---
+fit_sarimax_2016_2024 <- auto.arima(ts_cpi_2016_2024,
+                                    xreg = xreg_train_filled,
+                                    seasonal = TRUE,
+                                    stepwise = FALSE,
+                                    approximation = FALSE)
+
+forecast_sarimax_2016_2024 <- forecast(fit_sarimax_2016_2024,
+                                       xreg = future_xreg_2016_2024,
+                                       h = 24)
 
 ### export start ###
 
@@ -129,8 +164,9 @@ prophet_df <- data.frame(
   Hi95 = forecast_prophet_2025$yhat_upper
 )
 
+# ARIMAX 24-month forecast
 arimax_df <- data.frame(
-  Date = seq.Date(from = as.Date("2025-01-01"), by = "month", length.out = 12),
+  Date = seq.Date(from = as.Date("2025-01-01"), by = "month", length.out = 24),
   PointForecast = as.numeric(forecast_arimax_2016_2024$mean),
   Lo80 = as.numeric(forecast_arimax_2016_2024$lower[,1]),
   Hi80 = as.numeric(forecast_arimax_2016_2024$upper[,1]),
@@ -138,8 +174,9 @@ arimax_df <- data.frame(
   Hi95 = as.numeric(forecast_arimax_2016_2024$upper[,2])
 )
 
+# SARIMAX 24-month forecast
 sarimax_df <- data.frame(
-  Date = seq.Date(from = as.Date("2025-01-01"), by = "month", length.out = 12),
+  Date = seq.Date(from = as.Date("2025-01-01"), by = "month", length.out = 24),
   PointForecast = as.numeric(forecast_sarimax_2016_2024$mean),
   Lo80 = as.numeric(forecast_sarimax_2016_2024$lower[,1]),
   Hi80 = as.numeric(forecast_sarimax_2016_2024$upper[,1]),
@@ -166,9 +203,9 @@ forecast_2016_2024_df <- bind_rows(ets_df, arima_df, sarima_df, prophet_df, arim
 # Export to CSV
 write.csv(forecast_2016_2024_df, "./Data/Forecast/forecast_2016_2024.csv", row.names = FALSE)
 ### export end ###
-
-
 ```
+
+
 
 
 ```{r}
