@@ -1,1 +1,99 @@
-﻿{"name":"Custom","visualStyles":{"*":{"*":{"outspacePane":[{"transparency":1}]}}}}
+﻿{
+    "name": "Axis Dark",
+    "dataColors": [
+        "#F3C41E",
+        "#7589DD",
+        "#424242",
+        "#56C8BF",
+        "#F28E2C",
+        "#78465A",
+        "#AEA6A2",
+        "#C04A4A"
+    ],
+    "background": "#FFFFFF",
+    "foreground": "#3D0802",
+    "tableAccent": "#0F1934",
+    "minimum": "#2F4B66",
+    "center": "#5283B3",
+    "maximum": "#3D0802",
+    "textClasses": {
+        "label": {
+            "color": "#3D0802",
+            "fontFace": "Arial"
+        },
+        "callout": {
+            "color": "#3D0802",
+            "fontFace": "Arial"
+        },
+        "title": {
+            "color": "#3D0802",
+            "fontFace": "Arial"
+        },
+        "header": {
+            "color": "#3D0802",
+            "fontFace": "Arial"
+        }
+    },
+    "visualStyles": {
+        "*": {
+            "*": {
+                "background": [
+                    {
+                        "color": {
+                            "solid": {
+                                "color": "#3D0802"
+                            }
+                        },
+                        "transparency": 100
+                    }
+                ],
+                "outspacePane": [
+                    {
+                        "foregroundColor": {
+                            "solid": {
+                                "color": "#3D0802"
+                            }
+                        },
+                        "checkboxAndApplyColor": {
+                            "solid": {
+                                "color": "#3D0802"
+                            }
+                        }
+                    }
+                ],
+                "filterCard": [
+                    {
+                        "$id": "Applied",
+                        "foregroundColor": {
+                            "solid": {
+                                "color": "#E8E4E4"
+                            }
+                        }
+                    },
+                    {
+                        "$id": "Available",
+                        "foregroundColor": {
+                            "solid": {
+                                "color": "#E8E4E4"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        "page": {
+            "*": {
+                "background": [
+                    {
+                        "color": {
+                            "solid": {
+                                "color": "#571B1B"
+                            }
+                        },
+                        "transparency": 0
+                    }
+                ]
+            }
+        }
+    }
+}
